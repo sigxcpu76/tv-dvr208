@@ -1,20 +1,43 @@
 import React, { useEffect, useState } from 'react';
-import { Film, Radio, Settings, ShieldCheck } from 'lucide-react';
+import { Film, Radio, Settings, ShieldCheck, Smartphone } from 'lucide-react';
 import { useDvrPort } from './application/DvrContext';
 import { SystemOverview, VideoChannel } from './domain/models';
 import { ArchivePage } from './adapters/ui/ArchivePage';
 import { ConfigPage } from './adapters/ui/ConfigPage';
 import { LiveViewPage } from './adapters/ui/LiveViewPage';
+import { MobileConsole } from './adapters/ui/mobile/MobileConsole';
 
 type MainSection = 'live' | 'archive' | 'config';
+
+function detectInitialMobileMode(): boolean {
+  if (typeof window === 'undefined') return false;
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('view') === 'mobile' || params.get('mobile') === '1') return true;
+  if (params.get('view') === 'desktop') return false;
+  if (window.innerWidth > 0 && window.innerWidth <= 820) return true;
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+}
 
 export const App: React.FC = () => {
   const dvr = useDvrPort();
 
   const [section, setSection] = useState<MainSection>('live');
+  const [isMobileMode, setIsMobileMode] = useState<boolean>(detectInitialMobileMode);
+  const [manualOverride, setManualOverride] = useState<boolean>(false);
   const [channels, setChannels] = useState<VideoChannel[]>([]);
   const [overview, setOverview] = useState<SystemOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (manualOverride) return;
+    const handleResize = () => {
+      if (window.innerWidth > 0) {
+        setIsMobileMode(window.innerWidth <= 820);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [manualOverride]);
 
   useEffect(() => {
     let mounted = true;
@@ -32,6 +55,20 @@ export const App: React.FC = () => {
       mounted = false;
     };
   }, [dvr]);
+
+  if (isMobileMode) {
+    return (
+      <MobileConsole
+        channels={channels}
+        overview={overview}
+        error={error}
+        onSwitchToDesktop={() => {
+          setManualOverride(true);
+          setIsMobileMode(false);
+        }}
+      />
+    );
+  }
 
   return (
     <div className="app-shell">
@@ -72,6 +109,18 @@ export const App: React.FC = () => {
         </nav>
 
         <div className="navbar-status">
+          <button
+            type="button"
+            className="btn-chip"
+            onClick={() => {
+              setManualOverride(true);
+              setIsMobileMode(true);
+            }}
+            aria-label="Mobile View"
+            title="Switch to Dedicated Mobile Interface"
+          >
+            <Smartphone size={14} /> Mobile UI
+          </button>
           <span className="online-dot" />
           <span>{overview?.systemTime?.localTime?.slice(0, 19).replace('T', ' ') ?? 'Online'}</span>
         </div>

@@ -28,6 +28,13 @@ Live hardware telemetry from `/ISAPI/System/deviceInfo`, `/ISAPI/ContentMgmt/Sto
 
 ![System, Storage & Network Overview](docs/screenshots/system-overview.png)
 
+### 5. Dedicated Mobile-Native Console
+Purpose-built mobile interface (auto-detected on phones/tablets or via `?view=mobile` / the header toggle) featuring a horizontal touch-scrollable camera pill strip, sticky single-stream 16:9 player with `SD`/`HD` toggle, 2-column tap-to-stream preview cards, dedicated touch PTZ pad, card-based recording archive, and a fixed bottom tab bar.
+
+<p align="center">
+  <img src="docs/screenshots/mobile-console.png" alt="Mobile Native Console" width="360" />
+</p>
+
 ---
 
 ## Key Features & Reverse-Engineered Capabilities

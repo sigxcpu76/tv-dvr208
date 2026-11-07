@@ -343,4 +343,49 @@ describe('Hexagonal UI Integration via DvrApiPort', () => {
       expect(screen.getByText(/hdda/)).toBeInTheDocument();
     });
   });
+
+  it('switches to the dedicated Mobile UI and exercises mobile channel strip, PTZ tab, and mobile archive cards', async () => {
+    const port = createFakeDvrPort();
+    render(
+      <DvrProvider adapter={port}>
+        <App />
+      </DvrProvider>
+    );
+
+    await waitFor(() => expect(screen.getByTestId('camera-tile-1')).toBeInTheDocument());
+
+    // Switch to dedicated Mobile Console
+    fireEvent.click(screen.getByRole('button', { name: /Mobile View/i }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mobile-console')).toBeInTheDocument();
+      expect(screen.getByTestId('mobile-ch-pill-2')).toBeInTheDocument();
+    });
+
+    // Tap channel 2 pill in horizontal strip and open Mobile PTZ tab
+    fireEvent.click(screen.getByTestId('mobile-ch-pill-2'));
+    fireEvent.click(screen.getByRole('button', { name: /^PTZ$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mobile-ptz-panel')).toBeInTheDocument();
+    });
+
+    fireEvent.pointerDown(screen.getByLabelText('Mobile PTZ Right'));
+    await waitFor(() => {
+      expect(port.lastPtzMove).toEqual({
+        channelId: 2,
+        cmd: { pan: 50, tilt: 0, zoom: 0 },
+      });
+    });
+
+    // Navigate to Mobile Archive tab and verify segment card rendering
+    fireEvent.click(screen.getByRole('button', { name: /^Archive$/i }));
+    await waitFor(() => {
+      expect(screen.getByTestId('mobile-segment-card-0')).toBeInTheDocument();
+      expect(screen.getByTestId('mobile-active-download-btn')).toHaveAttribute(
+        'href',
+        expect.stringContaining('/api/archive/download.mp4')
+      );
+    });
+  });
 });
