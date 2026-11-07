@@ -150,7 +150,7 @@ func (h *Handler) handleSnapshot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "image/jpeg")
-	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
+	setNoCacheHeaders(w)
 	if r.URL.Query().Get("download") == "1" {
 		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="ch%d_%s.jpg"`, channelID, time.Now().Format("20060102_150405")))
 	}
@@ -178,7 +178,7 @@ func (h *Handler) handleLiveStream(w http.ResponseWriter, r *http.Request) {
 	defer h.unregisterLiveStream(streamID)
 
 	w.Header().Set("Content-Type", "video/mp4")
-	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
+	setNoCacheHeaders(w)
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
 
@@ -442,7 +442,7 @@ func (h *Handler) handleArchivePlay(w http.ResponseWriter, r *http.Request) {
 	defer h.unregisterArchivePlayStream(playID)
 
 	w.Header().Set("Content-Type", "video/mp4")
-	w.Header().Set("Cache-Control", "no-store")
+	setNoCacheHeaders(w)
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
 
@@ -465,7 +465,7 @@ func (h *Handler) handleArchiveDownload(w http.ResponseWriter, r *http.Request) 
 
 	w.Header().Set("Content-Type", "video/mp4")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, filename))
-	w.Header().Set("Cache-Control", "no-store")
+	setNoCacheHeaders(w)
 	w.WriteHeader(http.StatusOK)
 
 	_ = h.useCase.DownloadRecordingMP4(r.Context(), playbackURI, w)
@@ -473,8 +473,14 @@ func (h *Handler) handleArchiveDownload(w http.ResponseWriter, r *http.Request) 
 
 func (h *Handler) handleSPA(w http.ResponseWriter, r *http.Request) {
 	relPath := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
-	if relPath != "" && relPath != "." {
+	if relPath != "" && relPath != "." && relPath != "index.html" {
 		if info, err := fs.Stat(h.staticFS, relPath); err == nil && !info.IsDir() {
+			if strings.HasPrefix(relPath, "assets/") {
+				// Vite content-hashed bundle assets are immutable and safe to cache long-term
+				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+			} else {
+				setNoCacheHeaders(w)
+			}
 			h.fileServer.ServeHTTP(w, r)
 			return
 		}
@@ -483,13 +489,14 @@ func (h *Handler) handleSPA(w http.ResponseWriter, r *http.Request) {
 	// Navigating or refreshing the SPA root terminates lingering streams from the prior page lifecycle
 	h.cancelAllLiveStreams()
 
-	// Serve embedded index.html for root "/" and client-side SPA routes
+	// Serve embedded index.html for root "/" and client-side SPA routes (never cached by Cloudflare or browser)
 	indexBytes, err := fs.ReadFile(h.staticFS, "index.html")
 	if err != nil {
 		writeError(w, http.StatusNotFound, "embedded index.html not found")
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	setNoCacheHeaders(w)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(indexBytes)
 }
@@ -594,8 +601,17 @@ func parseIntQuery(r *http.Request, key string, defaultVal int) int {
 	return defaultVal
 }
 
+func setNoCacheHeaders(w http.ResponseWriter) {
+	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
+	w.Header().Set("CDN-Cache-Control", "no-store")
+	w.Header().Set("Cloudflare-CDN-Cache-Control", "no-store")
+}
+
 func writeJSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	setNoCacheHeaders(w)
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(data)
 }

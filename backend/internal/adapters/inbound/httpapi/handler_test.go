@@ -115,6 +115,9 @@ func TestHTTPAPIHandlerRoutes(t *testing.T) {
 	if err != nil || resp.StatusCode != http.StatusOK {
 		t.Fatalf("root SPA index failed: %v", err)
 	}
+	if cfHdr := resp.Header.Get("Cloudflare-CDN-Cache-Control"); cfHdr != "no-store" {
+		t.Fatalf("expected Cloudflare-CDN-Cache-Control: no-store on index.html, got %q", cfHdr)
+	}
 	indexData, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	if !strings.Contains(string(indexData), `<div id="root"></div>`) {
@@ -124,6 +127,9 @@ func TestHTTPAPIHandlerRoutes(t *testing.T) {
 	resp, err = http.Get(srv.URL + "/assets/app.js")
 	if err != nil || resp.StatusCode != http.StatusOK {
 		t.Fatalf("embedded asset failed: %v", err)
+	}
+	if cc := resp.Header.Get("Cache-Control"); !strings.Contains(cc, "immutable") {
+		t.Fatalf("expected immutable Cache-Control on hashed /assets/*, got %q", cc)
 	}
 	jsData, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
