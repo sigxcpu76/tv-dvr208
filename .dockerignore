@@ -1,0 +1,22 @@
+.git
+.github
+.gitignore
+.dockerignore
+README.md
+Makefile
+docker-compose.yml
+.env
+.env.*
+
+# Local build outputs & caches (rebuilt cleanly inside Docker multi-stage build)
+/backend/dvr-gateway
+/dvr-gateway
+/backend/internal/webui/dist
+/frontend/node_modules
+/frontend/dist
+*.tsbuildinfo
+
+# Reverse-engineering & dump directories
+dvr_web
+ghidra_proj
+ghidra_scripts

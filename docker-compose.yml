@@ -1,0 +1,20 @@
+services:
+  dvr-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ghcr.io/sigxcpu76/tv-dvr208:latest
+    container_name: tv-dvr208-gateway
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      - "${HOST_PORT:-8080}:8080"
+    environment:
+      LISTEN_ADDR: ":8080"
+      DVR_HOST: "${DVR_HOST:-192.168.1.64}"
+      DVR_HTTP_PORT: "${DVR_HTTP_PORT:-80}"
+      DVR_RTSP_PORT: "${DVR_RTSP_PORT:-554}"
+      DVR_USER: "${DVR_USER:-admin}"
+      DVR_PASS: "${DVR_PASS:?Set DVR_PASS in .env or environment}"

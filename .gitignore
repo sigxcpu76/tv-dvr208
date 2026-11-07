@@ -1,0 +1,41 @@
+# Compiled binaries & build artifacts
+/backend/dvr-gateway
+/dvr-gateway
+*.exe
+*.out
+*.test
+*.prof
+/dist/
+/release/
+/backend/internal/webui/dist/
+
+# Node / Frontend dependencies & caches
+node_modules/
+frontend/node_modules/
+frontend/dist/
+*.tsbuildinfo
+.npm/
+.eslintcache
+
+# Reverse-engineering & firmware extraction artifacts
+dvr_web/
+ghidra_proj/
+ghidra_scripts/
+*.bin
+*.pcap
+*.pcapng
+
+# Environment & local configuration
+.env
+.env.*
+!.env.example
+
+# IDE, OS & temporary files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+tmp/
