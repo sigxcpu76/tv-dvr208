@@ -227,4 +227,17 @@ func TestHTTPAPIHandlerRoutes(t *testing.T) {
 	if string(dlBytes) != "ARCHIVE-DOWNLOAD-MP4" {
 		t.Fatalf("unexpected download body: %s", string(dlBytes))
 	}
+
+	// 7. HLS endpoint validation (rejects invalid resource names)
+	resp, err = http.Get(srv.URL + "/api/channels/1/hls/2/invalid.txt")
+	if err != nil || resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400 Bad Request for invalid HLS file, got %v", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	resp, err = http.Get(srv.URL + "/api/archive/channels/1/hls/index.m3u8")
+	if err != nil || resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400 Bad Request for archive HLS without uri/start+end, got %v", resp.StatusCode)
+	}
+	resp.Body.Close()
 }

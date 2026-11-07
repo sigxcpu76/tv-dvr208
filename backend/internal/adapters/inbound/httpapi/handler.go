@@ -38,6 +38,8 @@ type Handler struct {
 	liveStreams       []activeStream
 	archivePlayID     uint64
 	archivePlayCancel context.CancelFunc
+	liveHLS           *hlsSession
+	archiveHLS        *hlsSession
 }
 
 // NewHandler creates a new HTTP Handler around a ports.DVRUseCase implementation and an optional embedded fs.FS.
@@ -75,6 +77,7 @@ func (h *Handler) registerRoutes() {
 	h.mux.HandleFunc("GET /api/channels", h.handleListChannels)
 	h.mux.HandleFunc("GET /api/channels/{id}/snapshot", h.handleSnapshot)
 	h.mux.HandleFunc("GET /api/channels/{id}/live.mp4", h.handleLiveStream)
+	h.mux.HandleFunc("GET /api/channels/{id}/hls/{stream}/{file}", h.handleLiveHLS)
 
 	h.mux.HandleFunc("POST /api/channels/{id}/ptz/move", h.handlePTZMove)
 	h.mux.HandleFunc("POST /api/channels/{id}/ptz/stop", h.handlePTZStop)
@@ -91,6 +94,7 @@ func (h *Handler) registerRoutes() {
 	h.mux.HandleFunc("GET /api/archive/channels/{id}/calendar", h.handleArchiveCalendar)
 	h.mux.HandleFunc("GET /api/archive/channels/{id}/search", h.handleArchiveSearch)
 	h.mux.HandleFunc("GET /api/archive/channels/{id}/play.mp4", h.handleArchivePlay)
+	h.mux.HandleFunc("GET /api/archive/channels/{id}/hls/{file}", h.handleArchiveHLS)
 	h.mux.HandleFunc("GET /api/archive/download.mp4", h.handleArchiveDownload)
 
 	if h.staticFS != nil {
@@ -555,6 +559,10 @@ func (h *Handler) cancelAllLiveStreams() {
 	if h.archivePlayCancel != nil {
 		h.archivePlayCancel()
 		h.archivePlayCancel = nil
+	}
+	if h.liveHLS != nil {
+		h.liveHLS.cancel()
+		h.liveHLS = nil
 	}
 }
 

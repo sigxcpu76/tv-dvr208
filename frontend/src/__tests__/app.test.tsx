@@ -21,6 +21,7 @@ import {
   formatDuration,
 } from '../domain/timeline';
 import { DvrApiPort } from '../ports/DvrApiPort';
+import { toHlsUrl } from '../adapters/ui/ManagedVideo';
 
 function createFakeDvrPort(): DvrApiPort & {
   lastPtzMove: { channelId: number; cmd: PTZCommand } | null;
@@ -260,6 +261,20 @@ describe('Domain Logic: Motion Grid & Timeline', () => {
     expect(bars[0].widthPercent).toBeCloseTo(25, 1);
     expect(formatBytes(262040376)).toBe('249.9 MB');
     expect(formatDuration('2026-11-07T12:00:00Z', '2026-11-07T12:13:10Z')).toBe('13m 10s');
+  });
+
+  it('converts progressive fMP4 stream URLs to Apple HLS (.m3u8) URLs for iOS/Safari', () => {
+    expect(toHlsUrl('/api/channels/1/live.mp4?stream=2&t=123')).toBe(
+      '/api/channels/1/hls/2/index.m3u8?t=123'
+    );
+    expect(toHlsUrl('/api/channels/3/live.mp4?stream=1')).toBe(
+      '/api/channels/3/hls/1/index.m3u8'
+    );
+    expect(
+      toHlsUrl('/api/archive/channels/1/play.mp4?uri=rtsp%3A%2F%2F192.168.27.60%2FStreaming%2Ftracks%2F101%2F')
+    ).toBe(
+      '/api/archive/channels/1/hls/index.m3u8?uri=rtsp%3A%2F%2F192.168.27.60%2FStreaming%2Ftracks%2F101%2F'
+    );
   });
 });
 
