@@ -147,6 +147,13 @@ func TestHTTPAPIHandlerRoutes(t *testing.T) {
 		t.Fatalf("expected SPA fallback to serve index.html, got: %s", string(fallbackData))
 	}
 
+	// Missing static asset (/favicon.ico) returns 204 No Content without falling through to index.html
+	resp, err = http.Get(srv.URL + "/favicon.ico")
+	if err != nil || resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("expected 204 No Content for /favicon.ico, got %v (err=%v)", resp.StatusCode, err)
+	}
+	resp.Body.Close()
+
 	// 1. Health check
 	resp, err = http.Get(srv.URL + "/api/health")
 	if err != nil || resp.StatusCode != http.StatusOK {
@@ -179,7 +186,7 @@ func TestHTTPAPIHandlerRoutes(t *testing.T) {
 	}
 	resp.Body.Close()
 
-	// 4. Live stream fMP4
+	// 4. Live stream fMP4 & WebSocket fMP4
 	resp, err = http.Get(srv.URL + "/api/channels/1/live.mp4?stream=2")
 	if err != nil || resp.StatusCode != http.StatusOK {
 		t.Fatalf("live.mp4 failed: %v", err)
@@ -188,6 +195,21 @@ func TestHTTPAPIHandlerRoutes(t *testing.T) {
 	resp.Body.Close()
 	if string(body) != "LIVE-MP4-BYTES" {
 		t.Fatalf("unexpected live stream body: %s", string(body))
+	}
+
+	wsReq, _ := http.NewRequest("GET", srv.URL+"/api/channels/1/live.ws?stream=2", nil)
+	wsReq.Header.Set("Connection", "Upgrade")
+	wsReq.Header.Set("Upgrade", "websocket")
+	wsReq.Header.Set("Sec-WebSocket-Version", "13")
+	wsReq.Header.Set("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ==")
+	wsResp, err := http.DefaultClient.Do(wsReq)
+	if err != nil || wsResp.StatusCode != http.StatusSwitchingProtocols {
+		t.Fatalf("live.ws upgrade failed: status=%v err=%v", wsResp.StatusCode, err)
+	}
+	wsFrame, _ := io.ReadAll(wsResp.Body)
+	wsResp.Body.Close()
+	if len(wsFrame) < 2+len("LIVE-MP4-BYTES") || wsFrame[0] != 0x82 || string(wsFrame[2:2+len("LIVE-MP4-BYTES")]) != "LIVE-MP4-BYTES" {
+		t.Fatalf("unexpected live.ws binary frame: %x", wsFrame)
 	}
 
 	// 5. PTZ Move & validation error

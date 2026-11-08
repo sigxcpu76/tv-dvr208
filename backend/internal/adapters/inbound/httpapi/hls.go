@@ -77,6 +77,7 @@ func (h *Handler) handleLiveHLS(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusGatewayTimeout, "timed out waiting for HLS playlist")
 			return
 		}
+		sess.touch()
 		data, err := os.ReadFile(targetPath)
 		if err != nil {
 			writeError(w, http.StatusNotFound, "playlist not ready")
@@ -95,6 +96,7 @@ func (h *Handler) handleLiveHLS(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "HLS segment not found")
 		return
 	}
+	sess.touch()
 	data, err := os.ReadFile(targetPath)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "HLS segment not found")
@@ -179,19 +181,17 @@ func (h *Handler) getOrStartLiveHLSSession(channelID, streamType int) (*hlsSessi
 	key := fmt.Sprintf("live-%d-%d", channelID, streamType)
 
 	h.streamMu.Lock()
-	if h.liveHLS != nil {
-		if h.liveHLS.key == key {
-			select {
-			case <-h.liveHLS.done:
-				// Previous process exited; recreate below
-			default:
-				sess := h.liveHLS
-				h.streamMu.Unlock()
-				return sess, nil
-			}
+	if h.liveHLS == nil {
+		h.liveHLS = make(map[string]*hlsSession)
+	}
+	if existing, ok := h.liveHLS[key]; ok && existing != nil {
+		select {
+		case <-existing.done:
+			delete(h.liveHLS, key)
+		default:
+			h.streamMu.Unlock()
+			return existing, nil
 		}
-		h.liveHLS.cancel()
-		h.liveHLS = nil
 	}
 
 	if h.archiveHLS != nil {
@@ -213,10 +213,10 @@ func (h *Handler) getOrStartLiveHLSSession(channelID, streamType int) (*hlsSessi
 		lastAccess: time.Now(),
 		done:       make(chan struct{}),
 	}
-	h.liveHLS = sess
+	h.liveHLS[key] = sess
 	h.streamMu.Unlock()
 
-	go h.runHLSPipeline(ctx, sess, 12*time.Second, true, func(w io.Writer) error {
+	go h.runHLSPipeline(ctx, sess, 25*time.Second, true, func(w io.Writer) error {
 		return h.useCase.StreamLiveVideo(ctx, channelID, streamType, w)
 	})
 
@@ -251,10 +251,10 @@ func (h *Handler) getOrStartArchiveHLSSession(channelID int, st, et time.Time, p
 		h.archiveHLS = nil
 	}
 
-	if h.liveHLS != nil {
-		h.liveHLS.cancel()
-		h.liveHLS = nil
+	for _, s := range h.liveHLS {
+		s.cancel()
 	}
+	h.liveHLS = nil
 	for _, s := range h.liveStreams {
 		s.cancel()
 	}
@@ -327,14 +327,16 @@ func (h *Handler) runHLSPipeline(
 		args = []string{
 			"-hide_banner",
 			"-loglevel", "error",
+			"-probesize", "32768",
+			"-analyzeduration", "0",
 			"-f", "mp4",
 			"-i", "pipe:0",
 			"-c:v", "copy",
 			"-an",
 			"-f", "hls",
 			"-hls_time", "1",
-			"-hls_list_size", "6",
-			"-hls_flags", "delete_segments+independent_segments+temp_file",
+			"-hls_playlist_type", "event",
+			"-hls_flags", "independent_segments+temp_file",
 			"-hls_segment_filename", segPattern,
 			m3u8Path,
 		}

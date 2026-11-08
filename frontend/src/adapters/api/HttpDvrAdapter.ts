@@ -57,7 +57,7 @@ export class HttpDvrAdapter implements DvrApiPort {
 
   getSnapshotUrl(channelId: number, streamType: 1 | 2 = 1, download = false): string {
     const dl = download ? '&download=1' : '';
-    return `${this.baseUrl}/api/channels/${channelId}/snapshot?stream=${streamType}${dl}&_t=${Date.now()}`;
+    return `${this.baseUrl}/api/channels/${channelId}/snapshot?stream=${streamType}${dl}`;
   }
 
   async ptzMove(channelId: number, cmd: PTZCommand): Promise<void> {

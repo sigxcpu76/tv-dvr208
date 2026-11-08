@@ -17,7 +17,7 @@ import (
 	"github.com/sigxcpu/tv-dvr208/backend/internal/ports"
 )
 
-const maxConcurrentLiveStreams = 4
+const maxConcurrentLiveStreams = 8
 
 type activeStream struct {
 	id        uint64
@@ -38,7 +38,7 @@ type Handler struct {
 	liveStreams       []activeStream
 	archivePlayID     uint64
 	archivePlayCancel context.CancelFunc
-	liveHLS           *hlsSession
+	liveHLS           map[string]*hlsSession
 	archiveHLS        *hlsSession
 }
 
@@ -77,6 +77,7 @@ func (h *Handler) registerRoutes() {
 	h.mux.HandleFunc("GET /api/channels", h.handleListChannels)
 	h.mux.HandleFunc("GET /api/channels/{id}/snapshot", h.handleSnapshot)
 	h.mux.HandleFunc("GET /api/channels/{id}/live.mp4", h.handleLiveStream)
+	h.mux.HandleFunc("GET /api/channels/{id}/live.ws", h.handleLiveWS)
 	h.mux.HandleFunc("GET /api/channels/{id}/hls/{stream}/{file}", h.handleLiveHLS)
 
 	h.mux.HandleFunc("POST /api/channels/{id}/ptz/move", h.handlePTZMove)
@@ -488,10 +489,16 @@ func (h *Handler) handleSPA(w http.ResponseWriter, r *http.Request) {
 			h.fileServer.ServeHTTP(w, r)
 			return
 		}
+		// Do not treat missing static asset requests (e.g. /favicon.ico, /apple-touch-icon.png) as SPA navigation
+		if path.Ext(relPath) != "" {
+			if relPath == "favicon.ico" {
+				w.WriteHeader(http.StatusNoContent)
+			} else {
+				http.NotFound(w, r)
+			}
+			return
+		}
 	}
-
-	// Navigating or refreshing the SPA root terminates lingering streams from the prior page lifecycle
-	h.cancelAllLiveStreams()
 
 	// Serve embedded index.html for root "/" and client-side SPA routes (never cached by Cloudflare or browser)
 	indexBytes, err := fs.ReadFile(h.staticFS, "index.html")
@@ -560,10 +567,10 @@ func (h *Handler) cancelAllLiveStreams() {
 		h.archivePlayCancel()
 		h.archivePlayCancel = nil
 	}
-	if h.liveHLS != nil {
-		h.liveHLS.cancel()
-		h.liveHLS = nil
+	for _, sess := range h.liveHLS {
+		sess.cancel()
 	}
+	h.liveHLS = nil
 }
 
 func (h *Handler) registerArchivePlayStream(parent context.Context) (context.Context, uint64) {

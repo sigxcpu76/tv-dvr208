@@ -232,7 +232,7 @@ export const LiveViewPage: React.FC<LiveViewPageProps> = ({ channels }) => {
                 </div>
 
                 <div className="camera-viewport">
-                  {renderMode === 'video' && (gridSize <= 4 || isSelected) ? (
+                  {renderMode === 'video' ? (
                     <ManagedVideo
                       key={`${ch.id}-${activeStream}`}
                       src={liveUrl}

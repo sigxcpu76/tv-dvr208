@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os/exec"
+	"sync"
 	"time"
 )
 
@@ -22,6 +23,8 @@ type Streamer struct {
 	password   string
 	ffmpegBin  string
 	cmdBuilder CommandRunner
+	startMu    sync.Mutex
+	lastStart  time.Time
 }
 
 // NewStreamer constructs a new FFmpeg media streamer adapter.
@@ -62,10 +65,12 @@ func (s *Streamer) LiveRTSPArgs(trackID int) []string {
 		"-loglevel", "error",
 		"-rtsp_transport", "tcp",
 		"-i", rtspURI,
+		"-copyts",
 		"-c:v", "copy",
 		"-an",
 		"-f", "mp4",
-		"-movflags", "frag_keyframe+empty_moov+default_base_moof",
+		"-movflags", "frag_keyframe+empty_moov+default_base_moof+frag_every_frame",
+		"-flush_packets", "1",
 		"pipe:1",
 	}
 }
@@ -107,8 +112,34 @@ func (s *Streamer) RemuxPipeArgs() []string {
 }
 
 func (s *Streamer) StreamLiveMP4(ctx context.Context, trackID int, w io.Writer) error {
+	if err := s.paceRTSPStart(ctx); err != nil {
+		return nil
+	}
 	args := s.LiveRTSPArgs(trackID)
 	return s.runFFmpeg(ctx, args, nil, w)
+}
+
+func (s *Streamer) paceRTSPStart(ctx context.Context) error {
+	s.startMu.Lock()
+	now := time.Now()
+	var wait time.Duration
+	if !s.lastStart.IsZero() {
+		elapsed := now.Sub(s.lastStart)
+		if elapsed < 150*time.Millisecond {
+			wait = 150*time.Millisecond - elapsed
+		}
+	}
+	s.lastStart = now.Add(wait)
+	s.startMu.Unlock()
+
+	if wait > 0 {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(wait):
+		}
+	}
+	return nil
 }
 
 func (s *Streamer) StreamArchiveRTSPToMP4(ctx context.Context, trackID int, startTime, endTime time.Time, w io.Writer) error {

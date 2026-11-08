@@ -21,7 +21,12 @@ import {
   formatDuration,
 } from '../domain/timeline';
 import { DvrApiPort } from '../ports/DvrApiPort';
-import { toHlsUrl } from '../adapters/ui/ManagedVideo';
+import {
+  detectAvcMime,
+  prefersNativeHls,
+  toHlsUrl,
+  toLiveWsUrl,
+} from '../adapters/ui/ManagedVideo';
 
 function createFakeDvrPort(): DvrApiPort & {
   lastPtzMove: { channelId: number; cmd: PTZCommand } | null;
@@ -275,6 +280,45 @@ describe('Domain Logic: Motion Grid & Timeline', () => {
     ).toBe(
       '/api/archive/channels/1/hls/index.m3u8?uri=rtsp%3A%2F%2F192.168.27.60%2FStreaming%2Ftracks%2F101%2F'
     );
+  });
+
+  it('converts live fMP4 URLs to WebSocket URLs and extracts avcC codec strings for MSE', () => {
+    expect(toLiveWsUrl('http://localhost:8080/api/channels/1/live.mp4?stream=2')).toBe(
+      'ws://localhost:8080/api/channels/1/live.ws?stream=2'
+    );
+    expect(toLiveWsUrl('https://dvr.example.com/api/channels/4/live.mp4?stream=1')).toBe(
+      'wss://dvr.example.com/api/channels/4/live.ws?stream=1'
+    );
+    expect(toLiveWsUrl('/api/archive/channels/1/play.mp4?uri=rtsp://test')).toBeNull();
+
+    // Simulated ISO BMFF avcC box header: 'avcC' followed by version=1, profile=0x64, compat=0x00, level=0x1f
+    const fakeInit = new Uint8Array([0x00, 0x00, 0x00, 0x2c, 0x61, 0x76, 0x63, 0x43, 0x01, 0x64, 0x00, 0x1f]);
+    expect(detectAvcMime(fakeInit)).toBe('video/mp4; codecs="avc1.64001f"');
+  });
+
+  it('never selects native HLS (.m3u8) on Desktop Chrome even when canPlayType returns maybe', () => {
+    const origUA = navigator.userAgent;
+    Object.defineProperty(window.navigator, 'userAgent', {
+      value:
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+      configurable: true,
+    });
+    const fakeVideo = {
+      canPlayType: () => 'maybe',
+    } as unknown as HTMLVideoElement;
+    expect(prefersNativeHls(fakeVideo)).toBe(false);
+
+    Object.defineProperty(window.navigator, 'userAgent', {
+      value:
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1',
+      configurable: true,
+    });
+    expect(prefersNativeHls(fakeVideo)).toBe(true);
+
+    Object.defineProperty(window.navigator, 'userAgent', {
+      value: origUA,
+      configurable: true,
+    });
   });
 });
 
